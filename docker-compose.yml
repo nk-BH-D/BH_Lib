@@ -1,0 +1,94 @@
+services:
+  users_db:
+    image: postgres:15-alpine
+    container_name: bh_users_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_US_DB}
+      POSTGRES_USER: ${POSTGRES_US_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_US_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--auth-local=scram-sha-256 --auth-host=scram-sha-256"
+    volumes:
+      - postgres_us_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+      - "CMD-SHELL"
+      - "pg_isready -U ${POSTGRES_US_USER} -d ${POSTGRES_US_DB} -h localhost -p 5432"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  lib_db:
+    image: postgres:15-alpine
+    container_name: bh_lib_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_LIB_DB}
+      POSTGRES_USER: ${POSTGRES_LIB_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_LIB_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--auth-local=scram-sha-256 --auth-host=scram-sha-256"
+    volumes:
+      - postgres_lib_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+      - "CMD-SHELL"
+      - "pg_isready -U ${POSTGRES_LIB_USER} -d ${POSTGRES_LIB_DB} -h localhost -p 5432"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bh_lib_app
+    restart: on-failure
+
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      HEALTH_CHECK_PORT: ${HEALTH_CHECK_PORT}
+
+      DB_LIB_URL: postgres://${POSTGRES_LIB_USER}:${POSTGRES_LIB_PASSWORD}@lib_db:5432/${POSTGRES_LIB_DB}?sslmode=disable
+      DB_US_URL: postgres://${POSTGRES_US_USER}:${POSTGRES_US_PASSWORD}@users_db:5432/${POSTGRES_US_DB}?sslmode=disable
+
+      POSTGRES_LIB_SMOC: ${POSTGRES_LIB_SMOC}
+      POSTGRES_LIB_SMIC: ${POSTGRES_LIB_SMIC}
+      POSTGRES_US_SMOC: ${POSTGRES_US_SMOC}
+      POSTGRES_US_SMIC: ${POSTGRES_US_SMIC}
+
+      ROOT_ID: ${ROOT_ID}
+
+      DOCX_ROOT_PATH: ${DOCX_ROOT_PATH}
+      DOCX_ADMIN_PATH: ${DOCX_ADMIN_PATH}
+      DOCX_USER_PATH: ${DOCX_USER_PATH}
+
+    ports:
+      - "${HEALTH_CHECK_PORT}:${HEALTH_CHECK_PORT}"
+
+    depends_on:
+      users_db:
+        condition: service_healthy
+      lib_db:
+        condition: service_healthy
+
+    command:
+      - "sh"
+      - "-c"
+      - >
+          until pg_isready -h users_db -p 5432 -U ${POSTGRES_US_USER};
+          do echo waiting for users postgres; sleep 1; done;
+          until pg_isready -h lib_db -p 5432 -U ${POSTGRES_LIB_USER};
+          do echo waiting for lib postgres; sleep 1; done;
+          /app/bh_lib-bin
+
+    healthcheck:
+      test:
+      - "CMD-SHELL"
+      - "curl -f http://localhost:${HEALTH_CHECK_PORT}/health || exit 1"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_us_data:
+  postgres_lib_data:
