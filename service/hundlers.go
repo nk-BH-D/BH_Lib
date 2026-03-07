@@ -42,19 +42,19 @@ func handlerCreateCod(bot *tgbotapi.BotAPI, chatID, userID int64, status, messag
 		parts := strings.Split(message, ";;")
 		log.Printf("len: %d", len(parts))
 
-		if len(parts) == 4 || len(parts)%2 != 0 {
+		if len(parts) < 4 || len(parts)%2 != 0 {
 			sendErrorMessage(bot, chatID, "Данные введены не корректно", status, "")
 			log.Println("hCC: len parts != 4")
 			return
 		}
 
-		course_name := strings.TrimSpace(parts[1])
+		course_name := strings.TrimSpace(parts[0])
 
-		for i := 2; i+2 < len(parts); i += 2 {
+		for i := 1; i+2 <= len(parts); i += 3 {
 			task_name := strings.TrimSpace(parts[i])
 			cound := strings.TrimSpace(parts[i+1])
 			log.Println(cound)
-			log.Println(parts[3])
+			log.Println(parts[i+2])
 
 			ctxIN, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -178,7 +178,7 @@ func handlerGetCod(bot *tgbotapi.BotAPI, chatID, userID int64, status, message, 
 	} else {
 		result.WriteString(escapeMarkdownV2(fmt.Sprintf("Задача: %s\n", name)))
 		result.WriteString("\n")
-		result.WriteString("Условие\n" + cond + "\n")
+		result.WriteString("Условие\n" + escapeMarkdownV2(cond) + "\n")
 		result.WriteString("\n")
 		result.WriteString("```" + "\n")
 		result.WriteString(escapeMarkdownV2(data) + "\n")
@@ -366,10 +366,6 @@ func handlerGetRequest(bot *tgbotapi.BotAPI, chatID, userID int64, status string
 	defer cancel()
 	if status == "root" || status == "admin" {
 		result, err := pg_us_db.GetAdminAndRootRequests(ctx)
-		if result == "" {
-			sendSuccessMessage(bot, chatID, "У вас пока нету запросов, начните пользоваться ботом что бы они появились", status, "")
-			return
-		}
 		if err != nil {
 			log.Printf("error GAARR: %v", err)
 			sendErrorMessage(bot, chatID, "ошибка GAARR", status, "")
@@ -458,6 +454,30 @@ func handlerNewAdmin(bot *tgbotapi.BotAPI, chatID, userID int64, status, message
 		}
 		sendSuccessMessage(bot, intnACI, "Вы добавлены в список администраторов.\nНажмите /start что бы пройти регистрацию", "", "")
 		log.Printf("hNA: admin %s successfully added", login)
+		intUsID, err := strconv.ParseInt(parts[0], 10, 64)
+		if err != nil {
+			log.Printf("error whem parse parts[0]: %v", err)
+			sendErrorMessage(bot, chatID, "Internal service error 32", status, "")
+			return
+		}
+
+		setSessionState(intUsID, false)
+		ctxIS, closeIS := context.WithTimeout(context.Background(), 5*time.Second)
+		defer closeIS()
+		errIS := pg_ses_db.InsertSession(ctxIS, intUsID, login)
+		if errIS != nil {
+			log.Printf("error whem insert session: %v", errIS)
+			sendErrorMessage(bot, chatID, "Internal service error 33", status, "")
+			return
+		}
+
+		ind, ok := getSessionState(intUsID)
+		if !ok {
+			log.Printf("error whem reading map: %v", err)
+			sendErrorMessage(bot, chatID, "Internal service error 33", status, "")
+			return
+		}
+		log.Printf("hNA: admin sessiom created, status = %t, time = %v; for: %d", ind.state, ind.time_created, intUsID)
 		return
 	} else {
 		sendErrorMessage(bot, chatID, "Вам отказано в доступе", status, "")
@@ -501,7 +521,6 @@ func handlerDelAdmin(bot *tgbotapi.BotAPI, chatID, userID int64, status, message
 	}
 
 	if status_in_db == status && status == "root" {
-
 		ctxCUS, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		errCUS := pg_us_db.ChangeUserStatus(ctxCUS, num_user_id, "user", "")
@@ -516,8 +535,27 @@ func handlerDelAdmin(bot *tgbotapi.BotAPI, chatID, userID int64, status, message
 			sendErrorMessage(bot, chatID, "Internal service error: попробуйте снова позже 27", status, "")
 			return
 		}
+
 		sendSuccessMessage(bot, intdACI, "Вы были лишены полномочий администратора", "user", "")
 		log.Printf("hDA: admin %s successfully removed", login)
+		intUsID, err := strconv.ParseInt(parts[0], 10, 64)
+		if err != nil {
+			log.Printf("error whem parse parts[0]: %v", err)
+			sendErrorMessage(bot, chatID, "Internal service error 32", status, "")
+			return
+		}
+
+		ctxDS, cancelDS := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelDS()
+		errDS := pg_ses_db.DeleteSession(ctxDS, intUsID)
+		if errDS != nil {
+			log.Printf("error whem del session: %v", err)
+			sendSuccessMessage(bot, chatID, "Internal service error", status, "")
+			return
+		}
+
+		deleteSessionStatus(intUsID)
+		log.Printf("hNA: admin sessiom deleted for: %d", intUsID)
 		return
 	} else {
 		sendErrorMessage(bot, chatID, "Вам отказано в доступе", status, "")

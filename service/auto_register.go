@@ -18,8 +18,6 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 	log.Printf("sMM: started showMainMenu for user %s;", from.UserName)
 	timer := time.NewTimer(1 * time.Minute)
 	done := make(chan struct{})
-	ctxRAAH, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
-	defer cancel()
 
 	go func() {
 		defer close(done)
@@ -55,7 +53,7 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 			switch status {
 			case "root":
 				status = ""
-				hashPassword := RootAndAdminHandler(ctxRAAH, bot, chatID, from)
+				hashPassword := RootAndAdminHandler(bot, chatID, from)
 				if hashPassword == "" {
 					log.Printf("sMM: root password setup failed")
 					return
@@ -98,7 +96,7 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 			case "root":
 				status = ""
 				if password_in_db == "" {
-					hashPassword := RootAndAdminHandler(ctxRAAH, bot, chatID, from)
+					hashPassword := RootAndAdminHandler(bot, chatID, from)
 					if hashPassword == "" {
 						log.Printf("sMM: root password setup failed")
 						return
@@ -119,7 +117,7 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 				for {
 					ind, ok := getUserState(chatID)
 					if ok && ind["re_password"] == "true" {
-						hashPassword := RootAndAdminHandler(ctxRAAH, bot, chatID, from)
+						hashPassword := RootAndAdminHandler(bot, chatID, from)
 						if hashPassword == "" {
 							log.Printf("sMM: root password setup failed")
 							return
@@ -148,7 +146,7 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 			case "admin":
 				status = ""
 				if password_in_db == "" {
-					hashPassword := RootAndAdminHandler(ctxRAAH, bot, chatID, from)
+					hashPassword := RootAndAdminHandler(bot, chatID, from)
 					if hashPassword == "" {
 						log.Printf("sMM: root password setup failed")
 						return
@@ -169,7 +167,7 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 				for {
 					ind, ok := getUserState(chatID)
 					if ok && ind["re_password"] == "true" {
-						hashPassword := RootAndAdminHandler(ctxRAAH, bot, chatID, from)
+						hashPassword := RootAndAdminHandler(bot, chatID, from)
 						if hashPassword == "" {
 							log.Printf("sMM: admin password setup failed")
 							return
@@ -253,12 +251,13 @@ func handlePassword(bot *tgbotapi.BotAPI, chatID int64, message string) {
 			ind, ok := getUserState(chatID)
 			if ok && ind["password_hash"] == "yes" {
 				setUserState(chatID, map[string]string{"password_hash": hashString})
-				ready = true
+				setReady(chatID, true)
 				log.Printf("hP: password successfully set")
 				return
 			}
 			if ok && ind["password_hash"] == "no" {
 				sendErrorMessage(bot, chatID, "Введите верный пароль", "", "")
+				setReady(chatID, false)
 				log.Printf("hP: password rejected")
 				setUserState(chatID, map[string]string{"password": ""})
 				return
@@ -281,8 +280,9 @@ func handlePassword(bot *tgbotapi.BotAPI, chatID int64, message string) {
 	}
 }
 
-func RootAndAdminHandler(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) string {
+func RootAndAdminHandler(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) string {
 	log.Printf("rAAH: started RootAndAdminHandler")
+	timer := time.NewTimer(1 * time.Minute)
 	done := make(chan struct{})
 	hashPasChan := make(chan string, 1)
 
@@ -298,30 +298,25 @@ func RootAndAdminHandler(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64
 			), "", "",
 		)
 		for {
-			select {
-			case <-ctx.Done():
-				log.Printf("rAAH: context cancelled")
-				return
-			default:
-				if ready {
-					ready = false
-					state, ok := getUserState(chatID)
-					if ok {
-						hashPasChan <- state["password_hash"]
-						log.Printf("rAAH: password hash set")
-					}
-					return
+			if isReady(chatID) { // Проверяем готовность через userReady
+				setReady(chatID, false) // Сбрасываем флаг готовности
+				state, ok := getUserState(chatID)
+				if ok {
+					hashPasChan <- state["password_hash"]
+					log.Printf("rAAH: password hash set")
 				}
-				runtime.Gosched()
+				return
 			}
+			runtime.Gosched()
 		}
 	}()
 
 	select {
-	case <-ctx.Done():
+	case <-timer.C:
 		log.Printf("rAAH: context timeout")
 		return ""
 	case <-done:
+		timer.Stop()
 		return <-hashPasChan
 	}
 }

@@ -2,7 +2,9 @@ package tg
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
@@ -20,23 +22,32 @@ import (
 )
 
 var (
-	userStates      = make(map[int64]map[string]string)
-	ready      bool = false
-	uSM        sync.RWMutex
-	conf       *config.Config
-	pg_lib_db  *lib.PostgresLib
-	pg_us_db   *us.PostgresUs
+	userStates    = make(map[int64]map[string]string)
+	sessionStatus = make(map[int64]sessionState)
+	userReady     = make(map[int64]bool) // Карта для хранения состояния готовности
+	uSM           sync.RWMutex
+	sSM           sync.RWMutex
+	uRM           sync.RWMutex
+	conf          *config.Config
+	pg_lib_db     *lib.PostgresLib
+	pg_us_db      *us.PostgresUs
+	pg_ses_db     *us.PostgresSes
 )
 
+type sessionState struct {
+	state        bool
+	time_created time.Time
+}
+
 // func for getting config from main
-func Init(cfg *config.Config, pg_lib *lib.PostgresLib, pg_us *us.PostgresUs) {
+func Init(cfg *config.Config, pg_lib *lib.PostgresLib, pg_us *us.PostgresUs, pg_ses *us.PostgresSes) {
 	conf = cfg
 	pg_lib_db = pg_lib
 	pg_us_db = pg_us
+	pg_ses_db = pg_ses
 }
 
-// func fot syncing map
-
+// func fot syncing userState map
 func setUserState(chatID int64, state map[string]string) {
 	uSM.Lock()
 	defer uSM.Unlock()
@@ -52,6 +63,44 @@ func deleteUserState(chatID int64) {
 	uSM.Lock()
 	defer uSM.Unlock()
 	delete(userStates, chatID)
+}
+
+// func for syncing statusState map
+func setSessionState(userID int64, state bool) {
+	sSM.Lock()
+	defer sSM.Unlock()
+	sessionStatus[userID] = sessionState{
+		state:        state,
+		time_created: time.Now().UTC(),
+	}
+}
+func getSessionState(userID int64) (sessionState, bool) {
+	sSM.RLock()
+	defer sSM.RUnlock()
+	state, ok := sessionStatus[userID]
+	return state, ok
+}
+func deleteSessionStatus(userID int64) {
+	sSM.Lock()
+	defer sSM.Unlock()
+	delete(sessionStatus, userID)
+}
+
+// func for syncing ready map
+func setReady(chatID int64, ready bool) {
+	uRM.Lock()
+	defer uRM.Unlock()
+	userReady[chatID] = ready
+	log.Printf("setReady: флаг готовности установлен для chatID %d: %v", chatID, ready)
+}
+func isReady(chatID int64) bool {
+	uRM.RLock()
+	defer uRM.RUnlock()
+	ready, ok := userReady[chatID]
+	if !ok {
+		return false
+	}
+	return ready
 }
 
 // sendDocxFile sending file .docx to Telegram chat.
@@ -168,6 +217,9 @@ func HandleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 				go handelerPasswordChange(bot, userID, chatID, text, status)
 				log.Printf("Активных горутин: %d\n", runtime.NumGoroutine())
 				return
+			case "password_check":
+				setUserState(chatID, map[string]string{"password_check": text})
+				setReady(chatID, true)
 			case "del_code":
 				go handlerDelCode(bot, chatID, userID, status, message.Text, message.From.UserName)
 				log.Printf("Активных горутин: %d\n", runtime.NumGoroutine())
@@ -319,35 +371,203 @@ func HandleCallback(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.CallbackQuery)
 		setUserState(chatID, map[string]string{"password_hash": "no"})
 		return
 	case "create_code":
-		setUserState(chatID, map[string]string{"create_code": ""})
-		sendSuccessMessage(bot, chatID, "Введите данные как указано в документации", status, "d")
+		if chekerSessionStatus(bot, chatID, userID, status) {
+			setUserState(chatID, map[string]string{"create_code": ""})
+			sendSuccessMessage(bot, chatID, "Введите данные как указано в документации", status, "d")
+			return
+		}
 		return
 	case "get_code":
 		setUserState(chatID, map[string]string{"get_code": ""})
 		sendSuccessMessage(bot, chatID, "Введите данные как указано в документации", status, "d")
 		return
 	case "del_code":
-		setUserState(chatID, map[string]string{"del_code": ""})
-		sendSuccessMessage(bot, chatID, "Введите данные как указано в документации", status, "d")
+		if chekerSessionStatus(bot, chatID, userID, status) {
+			setUserState(chatID, map[string]string{"del_code": ""})
+			sendSuccessMessage(bot, chatID, "Введите данные как указано в документации", status, "d")
+			return
+		}
 		return
 	case "up_code":
-		setUserState(chatID, map[string]string{"up_code": ""})
-		sendSuccessMessage(bot, chatID, "Введите данные как указано в документации", status, "d")
+		if chekerSessionStatus(bot, chatID, userID, status) {
+			setUserState(chatID, map[string]string{"up_code": ""})
+			sendSuccessMessage(bot, chatID, "Введите данные как указано в документации", status, "d")
+			return
+		}
 		return
 	case "get_my_request":
 		go handlerGetRequest(bot, chatID, userID, status)
 		log.Printf("Активныч горутин: %d\n", runtime.NumGoroutine())
 		return
 	case "new_admin":
-		setUserState(chatID, map[string]string{"new_admin": ""})
-		sendSuccessMessage(bot, chatID, "Введите данные как указано в документации", status, "d")
+		if chekerSessionStatus(bot, chatID, userID, status) {
+			setUserState(chatID, map[string]string{"new_admin": ""})
+			sendSuccessMessage(bot, chatID, "Введите данные как указано в документации", status, "d")
+			return
+		}
 		return
 	case "del_admin":
-		setUserState(chatID, map[string]string{"del_admin": ""})
-		sendSuccessMessage(bot, chatID, "Введите данные как указано в документации", status, "d")
+		if chekerSessionStatus(bot, chatID, userID, status) {
+			setUserState(chatID, map[string]string{"del_admin": ""})
+			sendSuccessMessage(bot, chatID, "Введите данные как указано в документации", status, "d")
+			return
+		}
 		return
 	default:
 		sendErrorMessage(bot, chatID, "Неизвестная команда", status, "")
 		return
+	}
+}
+
+func chekerSessionStatus(bot *tgbotapi.BotAPI, chatID, userID int64, status string) bool {
+	timer := time.NewTimer(1 * time.Minute)
+	done := make(chan struct{})
+	res_chan := make(chan bool, 1)
+
+	go func() {
+		defer close(done)
+		state, ok := getSessionState(userID)
+		if !ok {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_, ind, err := pg_ses_db.GetSession(ctx, userID)
+			if err != nil {
+				log.Printf("error whem getting state for session: %v", err)
+				sendErrorMessage(bot, chatID, "Internal service error 34", status, "")
+				res_chan <- false
+				return
+			}
+			if ind {
+				setSessionState(userID, false)
+				setUserState(chatID, map[string]string{"password_check": ""})
+				sendSuccessMessage(bot, chatID, "Введите пароль", status, "")
+				for {
+					if isReady(chatID) {
+						setReady(chatID, false)
+						ctxGUS, cancelGUS := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancelGUS()
+						_, _, password_in_db, err := pg_us_db.GetUserStatus(ctxGUS, userID)
+						if err != nil {
+							log.Printf("error whem getting password in db")
+							sendErrorMessage(bot, chatID, "Internal service error 36", status, "")
+							res_chan <- false
+							return
+						}
+						password, ok := getUserState(chatID)
+						if !ok {
+							log.Println("error whem getting user status from db")
+							sendErrorMessage(bot, chatID, "Internal service error 35", status, "")
+							res_chan <- false
+							return
+						}
+						hash := sha256.Sum256([]byte(password["password_check"]))
+						if password_in_db == hex.EncodeToString(hash[:]) {
+							setSessionState(userID, true)
+							sendSuccessMessage(bot, chatID, "Пароль принят, у вас есть 15 минут до окончания сессии", "", "")
+							res_chan <- true
+							return
+						} else {
+							sendErrorMessage(bot, chatID, "Пароль не верный, повторно выберите действие", status, "")
+							res_chan <- false
+							return
+						}
+					}
+				}
+			}
+		}
+		if state.state {
+			if time.Since(state.time_created) > 15*time.Minute {
+				setSessionState(userID, false)
+				setUserState(chatID, map[string]string{"password_check": ""})
+				sendSuccessMessage(bot, chatID, "Введите пароль", status, "")
+				for {
+					if isReady(chatID) {
+						setReady(chatID, false)
+						ctxGUS, cancelGUS := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancelGUS()
+						_, _, password_in_db, err := pg_us_db.GetUserStatus(ctxGUS, userID)
+						if err != nil {
+							log.Printf("error whem getting password in db")
+							sendErrorMessage(bot, chatID, "Internal service error 36", status, "")
+							res_chan <- false
+							return
+						}
+						password, ok := getUserState(chatID)
+						if !ok {
+							log.Println("error whem getting user status from db")
+							sendErrorMessage(bot, chatID, "Internal service error 35", status, "")
+							res_chan <- false
+							return
+						}
+						hash := sha256.Sum256([]byte(password["password_check"]))
+						if password_in_db == hex.EncodeToString(hash[:]) {
+							setSessionState(userID, true)
+							sendSuccessMessage(bot, chatID, "Пароль принят, у вас есть 15 минут до окончания сессии", "", "")
+							res_chan <- true
+							return
+						} else {
+							sendErrorMessage(bot, chatID, "Пароль не верный, повторно выберите действие", status, "")
+							res_chan <- false
+							return
+						}
+					}
+				}
+			} else {
+				remaining := (15 * time.Minute) - time.Since(state.time_created)
+				minute := int(remaining.Minutes())
+				second := int(remaining.Seconds()) % 60
+				sendSuccessMessage(bot, chatID, fmt.Sprintf(
+					"У вас осталось %d минут %d секунд", minute, second,
+				), "", "",
+				)
+				res_chan <- true
+				return
+			}
+		}
+		setUserState(chatID, map[string]string{"password_check": ""})
+		sendSuccessMessage(bot, chatID, "Введите пароль", status, "")
+		for {
+			if isReady(chatID) {
+				setReady(chatID, false)
+				ctxGUS, cancelGUS := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancelGUS()
+				_, _, password_in_db, err := pg_us_db.GetUserStatus(ctxGUS, userID)
+				if err != nil {
+					log.Printf("error whem getting password in db")
+					sendErrorMessage(bot, chatID, "Internal service error 36", status, "")
+					res_chan <- false
+					return
+				}
+				password, ok := getUserState(chatID)
+				if !ok {
+					log.Println("error whem getting user status from db")
+					sendErrorMessage(bot, chatID, "Internal service error 35", status, "")
+					res_chan <- false
+					return
+				}
+				hash := sha256.Sum256([]byte(password["password_check"]))
+				if password_in_db == hex.EncodeToString(hash[:]) {
+					setSessionState(userID, true)
+					sendSuccessMessage(bot, chatID, "Пароль принят, у вас есть 15 минут до окончания сессии", "", "")
+					res_chan <- true
+					return
+				} else {
+					sendErrorMessage(bot, chatID, "Пароль не верный, повторно выберите действие", status, "")
+					res_chan <- false
+					return
+				}
+			}
+		}
+	}()
+
+	select {
+	case <-timer.C:
+		log.Println("cSS: password input timed out")
+		sendErrorMessage(bot, chatID, "Сессия ввода пароля истекла, повторно выберите действие", status, "")
+		return false
+	case <-done:
+		timer.Stop()
+		res := <-res_chan
+		return res
 	}
 }

@@ -44,7 +44,7 @@ func (p *PostgresLib) ensureSchema() error {
 
 	schrema := `
 	CREATE TABLE IF NOT EXISTS lib (
-		id INTEGER NOT NULL,
+		id BIGINT NOT NULL,
 		course TEXT NOT NULL,
 		name TEXT NOT NULL,
 		cond TEXT NOT NULL,

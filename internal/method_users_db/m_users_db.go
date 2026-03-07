@@ -36,7 +36,7 @@ func NewUsPostgres(db_us_url string, smoc, smic int) (*PostgresUs, error) {
 	return p, nil
 }
 
-func (p *PostgresUs) Close() error {
+func (p *PostgresUs) CloseUs() error {
 	return p.DB_us.Close()
 }
 
@@ -114,10 +114,6 @@ func (p *PostgresUs) GetAdminAndRootRequests(ctx context.Context) (string, error
 
 		if err := rows.Scan(&login, &requestNames); err != nil {
 			return "", err
-		}
-
-		if requestNames.String == "" {
-			return "", nil
 		}
 
 		// Добавляем логин в результат
@@ -229,6 +225,86 @@ func (p *PostgresUs) ChangeUserStatus(ctx context.Context, user_id int64, status
 		status,
 		password,
 		user_id,
+	)
+	return err
+}
+
+type PostgresSes struct {
+	DB_ses *sql.DB
+}
+
+func NewSesPostgres(db_ses_url string, smoc, smic int) (*PostgresSes, error) {
+	db, err := sql.Open("pgx", db_ses_url)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(smoc)
+	db.SetMaxIdleConns(smic)
+	db.SetConnMaxLifetime(30 * time.Minute)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		return nil, err
+	}
+
+	ps := &PostgresSes{DB_ses: db}
+	if err := ps.ensureSchemaSes(); err != nil {
+		return nil, err
+	}
+	return ps, nil
+}
+
+func (ps *PostgresSes) CloseSes() error {
+	return ps.DB_ses.Close()
+}
+func (ps *PostgresSes) ensureSchemaSes() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	schrema := `
+	CREATE TABLE IF NOT EXISTS ses (
+		id BIGINT NOT NULL,
+		login TEXT NOT NULL,
+		PRIMARY KEY (id)
+	);`
+	_, err := ps.DB_ses.ExecContext(ctx, schrema)
+	return err
+}
+
+func (ps *PostgresSes) InsertSession(ctx context.Context, id int64, login string) error {
+	_, err := ps.DB_ses.ExecContext(
+		ctx,
+		"INSERT INTO ses (id,login) VALUES ($1,$2)",
+		id,
+		login,
+	)
+	return err
+}
+
+func (ps *PostgresSes) GetSession(ctx context.Context, id int64) (string, bool, error) {
+	var login string
+	row := ps.DB_ses.QueryRowContext(
+		ctx,
+		"SELECT login FROM ses WHERE id=$1",
+		id,
+	)
+	err := row.Scan(&login)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", false, nil
+		} else {
+			return "", false, err
+		}
+	}
+	return login, true, nil
+}
+
+func (ps *PostgresSes) DeleteSession(ctx context.Context, id int64) error {
+	_, err := ps.DB_ses.ExecContext(
+		ctx,
+		"DELETE FROM ses WHERE id=$1",
+		id,
 	)
 	return err
 }

@@ -26,19 +26,25 @@ func main() {
 	// connect to Postgres lib
 	pg_lib_db, err := lib.NewLibPostgres(conf.DB_LIB_URL, conf.POSTGRES_LIB_SMOC, conf.POSTGRES_LIB_SMIC)
 	if err != nil {
-		log.Fatalf("failed to connect postgres_db: %v", err)
+		log.Fatalf("failed to connect postgres_lib_db: %v", err)
 	}
 	defer pg_lib_db.Close()
 
 	// connect to Postgres users
 	pg_us_db, err := us.NewUsPostgres(conf.DB_US_URL, conf.POSTGRES_US_SMOC, conf.POSTGRES_US_SMIC)
 	if err != nil {
-		log.Fatalf("failed to connect postgres_db: %v", err)
+		log.Fatalf("failed to connect postgres_us_db: %v", err)
 	}
-	defer pg_us_db.Close()
+	defer pg_us_db.CloseUs()
+
+	pg_ses_db, err := us.NewSesPostgres(conf.DB_US_URL, conf.POSTGRES_US_SMOC, conf.POSTGRES_US_SMIC)
+	if err != nil {
+		log.Fatalf("failed to connect postgres_ses_db: %v", err)
+	}
+	defer pg_ses_db.CloseSes()
 
 	// func for initialization of variables
-	tg.Init(conf, pg_lib_db, pg_us_db)
+	tg.Init(conf, pg_lib_db, pg_us_db, pg_ses_db)
 	// handler for health-check
 	muxHealth := http.NewServeMux()
 	muxHealth.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +61,14 @@ func main() {
 		if err := pg_us_db.DB_us.PingContext(ctx); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			log.Printf("db_us not ready, status: %d, error: %v",
+				http.StatusInternalServerError,
+				err,
+			)
+			return
+		}
+		if err := pg_ses_db.DB_ses.PingContext(ctx); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Printf("db_ses not ready, status: %d, error: %v",
 				http.StatusInternalServerError,
 				err,
 			)
