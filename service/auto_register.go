@@ -17,10 +17,12 @@ import (
 func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 	log.Printf("sMM: started showMainMenu for user %s;", from.UserName)
 	timer := time.NewTimer(1 * time.Minute)
+	tiker := time.NewTicker(250 * time.Millisecond)
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
+		tik := 0
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("sMM: intercepted panic: %v", r)
@@ -114,7 +116,12 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 				}
 				sendSuccessMessage(bot, chatID, "Введите старый пароль", "root", "")
 				setUserState(chatID, map[string]string{"re_password": ""})
-				for {
+				for range tiker.C {
+					tik++
+					if tik >= 240 {
+						tik = 0
+						return
+					}
 					ind, ok := getUserState(chatID)
 					if ok && ind["re_password"] == "true" {
 						hashPassword := RootAndAdminHandler(bot, chatID, from)
@@ -142,6 +149,7 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 						sendErrorMessage(bot, chatID, "error when accessing map", "", "")
 						return
 					}
+					runtime.Gosched()
 				}
 			case "admin":
 				status = ""
@@ -164,7 +172,12 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 				}
 				sendSuccessMessage(bot, chatID, "Введите старый пароль", "admin", "")
 				setUserState(chatID, map[string]string{"re_password": ""})
-				for {
+				for range tiker.C {
+					tik++
+					if tik >= 240 {
+						tik = 0
+						return
+					}
 					ind, ok := getUserState(chatID)
 					if ok && ind["re_password"] == "true" {
 						hashPassword := RootAndAdminHandler(bot, chatID, from)
@@ -192,6 +205,7 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 						sendErrorMessage(bot, chatID, "error when accessing map", "", "")
 						return
 					}
+					runtime.Gosched()
 				}
 			case "user":
 				status = ""
@@ -223,10 +237,12 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 func handlePassword(bot *tgbotapi.BotAPI, chatID int64, message string) {
 	log.Printf("hP: started handlePassword")
 	timer := time.NewTimer(1 * time.Minute)
+	tiker := time.NewTicker(250 * time.Millisecond)
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
+		tik := 0
 		runa, ok := isValid(message)
 		log.Printf("hP: password validation result: %v", ok)
 		if !ok {
@@ -247,7 +263,12 @@ func handlePassword(bot *tgbotapi.BotAPI, chatID int64, message string) {
 		mdV2 := escapeMarkdownV2(message)
 		sendSuccessMessage(bot, chatID, fmt.Sprintf("Ваш пароль получен ||%s||\\.\n Пароль верный?", mdV2), "", "cp")
 
-		for {
+		for range tiker.C {
+			tik++
+			if tik >= 240 {
+				tik = 0
+				return
+			}
 			ind, ok := getUserState(chatID)
 			if ok && ind["password_hash"] == "yes" {
 				setUserState(chatID, map[string]string{"password_hash": hashString})
@@ -267,6 +288,7 @@ func handlePassword(bot *tgbotapi.BotAPI, chatID int64, message string) {
 				sendErrorMessage(bot, chatID, "error when accessing map", "", "")
 				return
 			}
+			runtime.Gosched()
 		}
 	}()
 
@@ -283,11 +305,13 @@ func handlePassword(bot *tgbotapi.BotAPI, chatID int64, message string) {
 func RootAndAdminHandler(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) string {
 	log.Printf("rAAH: started RootAndAdminHandler")
 	timer := time.NewTimer(1 * time.Minute)
+	tiker := time.NewTicker(250 * time.Millisecond)
 	done := make(chan struct{})
 	hashPasChan := make(chan string, 1)
 
 	go func() {
 		defer close(done)
+		tik := 0
 		defer close(hashPasChan)
 		setUserState(chatID, map[string]string{"password": ""})
 		sendSuccessMessage(bot, chatID,
@@ -297,7 +321,12 @@ func RootAndAdminHandler(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User
 				strings.TrimSpace(from.LastName+" "+from.FirstName),
 			), "", "",
 		)
-		for {
+		for range tiker.C {
+			tik++
+			if tik >= 240 {
+				tik = 0
+				return
+			}
 			if isReady(chatID) { // Проверяем готовность через userReady
 				setReady(chatID, false) // Сбрасываем флаг готовности
 				state, ok := getUserState(chatID)

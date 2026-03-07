@@ -421,11 +421,13 @@ func HandleCallback(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.CallbackQuery)
 
 func chekerSessionStatus(bot *tgbotapi.BotAPI, chatID, userID int64, status string) bool {
 	timer := time.NewTimer(1 * time.Minute)
+	tiker := time.NewTicker(250 * time.Millisecond)
 	done := make(chan struct{})
 	res_chan := make(chan bool, 1)
 
 	go func() {
 		defer close(done)
+		tik := 0
 		state, ok := getSessionState(userID)
 		if !ok {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -441,7 +443,12 @@ func chekerSessionStatus(bot *tgbotapi.BotAPI, chatID, userID int64, status stri
 				setSessionState(userID, false)
 				setUserState(chatID, map[string]string{"password_check": ""})
 				sendSuccessMessage(bot, chatID, "Введите пароль", status, "")
-				for {
+				for range tiker.C {
+					tik++
+					if tik >= 240 {
+						tik = 0
+						return
+					}
 					if isReady(chatID) {
 						setReady(chatID, false)
 						ctxGUS, cancelGUS := context.WithTimeout(context.Background(), 5*time.Second)
@@ -472,6 +479,7 @@ func chekerSessionStatus(bot *tgbotapi.BotAPI, chatID, userID int64, status stri
 							return
 						}
 					}
+					runtime.Gosched()
 				}
 			}
 		}
@@ -480,7 +488,12 @@ func chekerSessionStatus(bot *tgbotapi.BotAPI, chatID, userID int64, status stri
 				setSessionState(userID, false)
 				setUserState(chatID, map[string]string{"password_check": ""})
 				sendSuccessMessage(bot, chatID, "Введите пароль", status, "")
-				for {
+				for range tiker.C {
+					tik++
+					if tik >= 240 {
+						tik = 0
+						return
+					}
 					if isReady(chatID) {
 						setReady(chatID, false)
 						ctxGUS, cancelGUS := context.WithTimeout(context.Background(), 5*time.Second)
@@ -511,6 +524,7 @@ func chekerSessionStatus(bot *tgbotapi.BotAPI, chatID, userID int64, status stri
 							return
 						}
 					}
+					runtime.Gosched()
 				}
 			} else {
 				remaining := (15 * time.Minute) - time.Since(state.time_created)
@@ -526,7 +540,12 @@ func chekerSessionStatus(bot *tgbotapi.BotAPI, chatID, userID int64, status stri
 		}
 		setUserState(chatID, map[string]string{"password_check": ""})
 		sendSuccessMessage(bot, chatID, "Введите пароль", status, "")
-		for {
+		for range tiker.C {
+			tik++
+			if tik >= 240 {
+				tik = 0
+				return
+			}
 			if isReady(chatID) {
 				setReady(chatID, false)
 				ctxGUS, cancelGUS := context.WithTimeout(context.Background(), 5*time.Second)
@@ -557,6 +576,7 @@ func chekerSessionStatus(bot *tgbotapi.BotAPI, chatID, userID int64, status stri
 					return
 				}
 			}
+			runtime.Gosched()
 		}
 	}()
 
