@@ -7,15 +7,15 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
+
+	//"os"
+	//"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	//"github.com/google/uuid"
 	"github.com/nk-BH-D/BH_Lib/internal/config"
 	lib "github.com/nk-BH-D/BH_Lib/internal/method_lib_db"
 	us "github.com/nk-BH-D/BH_Lib/internal/method_users_db"
@@ -104,54 +104,55 @@ func isReady(chatID int64) bool {
 }
 
 // sendDocxFile sending file .docx to Telegram chat.
-func sendDocxFile(bot *tgbotapi.BotAPI, chatID int64, filePath string, status string) {
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		log.Printf("file '%s' not found: %v", filePath, err)
-		return
-	}
-
-	fileBytes, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Printf("couldn't read the file '%s': %v", filePath, err)
-		return
-	}
-
-	fileName := filepath.Base(filePath)
-	// creating an object DocumentConfig for sending to Telegram
-	documentConfig := tgbotapi.NewDocument(chatID, tgbotapi.FileBytes{
-		Name:  fileName,
-		Bytes: fileBytes,
-	})
-
-	documentConfig.Caption = "Внимательно изучите содержимое файла"
-	switch status {
-	case "root":
-		documentConfig.ReplyMarkup = createRootMenuKeyboard()
-	case "admin":
-		documentConfig.ReplyMarkup = createAdminMenuKeyboard()
-	case "user":
-		documentConfig.ReplyMarkup = createUserMenuKeyboard()
-	default:
-		msg := tgbotapi.NewMessage(
-			chatID,
-			"Internal service error: попробуйте снова позже",
-		)
-		bot.Send(msg)
-		log.Printf("error whem detect user status: %s", status)
-		return
-	}
-
-	_, err = bot.Send(documentConfig)
-	if err != nil {
-		log.Printf("couldn't send the file '%s' to chat %d: %v", filePath, chatID, err)
-		return
-	}
-}
+//func sendDocxFile(bot *tgbotapi.BotAPI, chatID int64, filePath string, status string) {
+//	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+//		log.Printf("file '%s' not found: %v", filePath, err)
+//		return
+//	}
+//
+//	fileBytes, err := os.ReadFile(filePath)
+//	if err != nil {
+//		log.Printf("couldn't read the file '%s': %v", filePath, err)
+//		return
+//	}
+//
+//	fileName := filepath.Base(filePath)
+//	// creating an object DocumentConfig for sending to Telegram
+//	documentConfig := tgbotapi.NewDocument(chatID, tgbotapi.FileBytes{
+//		Name:  fileName,
+//		Bytes: fileBytes,
+//	})
+//
+//	documentConfig.Caption = "Внимательно изучите содержимое файла"
+//	switch status {
+//	case "root":
+//		documentConfig.ReplyMarkup = createRootMenuKeyboard()
+//	case "admin":
+//		documentConfig.ReplyMarkup = createAdminMenuKeyboard()
+//	case "user":
+//		documentConfig.ReplyMarkup = createUserMenuKeyboard()
+//	default:
+//		msg := tgbotapi.NewMessage(
+//			chatID,
+//			"Internal service error: попробуйте снова позже",
+//		)
+//		bot.Send(msg)
+//		log.Printf("error whem detect user status: %s", status)
+//		return
+//	}
+//
+//	_, err = bot.Send(documentConfig)
+//	if err != nil {
+//		log.Printf("couldn't send the file '%s' to chat %d: %v", filePath, chatID, err)
+//		return
+//	}
+//}
 
 func HandleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	log.Printf("НM %+v", message.From)
 	chatID := message.Chat.ID
 	userID := message.From.ID
+	messageID := message.MessageID
 	text := strings.TrimSpace(message.Text)
 	//log.Printf("HM text: %s", text)
 	//log.Printf("HM message: %v", message.Text)
@@ -174,20 +175,27 @@ func HandleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 	if text == "/docx" {
 		deleteUserState(chatID)
-		switch status {
-		case "root":
-			sendDocxFile(bot, chatID, conf.DOCX_ROOT_PATH, status)
-		case "admin":
-			sendDocxFile(bot, chatID, conf.DOCX_ADMIN_PATH, status)
-		case "user":
-			sendDocxFile(bot, chatID, conf.DOCX_USER_PATH, status)
-		default:
-			msg := tgbotapi.NewMessage(
-				chatID,
-				"Internal service error: попробуйте снова позже 8",
-			)
-			bot.Send(msg)
-		}
+		sendSuccessMessage(
+			bot,
+			chatID,
+			"Из-за замедления Telegram файлы плохо или вообще не загружаютсяю\nПоэтому вы можете ознакомится с кодом и инструкцией по использованию тут.\nGitHub: https://github.com/nk-BH-D/BH_Lib ",
+			status,
+			"",
+		)
+		//switch status {
+		//case "root":
+		//	sendDocxFile(bot, chatID, conf.DOCX_ROOT_PATH, status)
+		//case "admin":
+		//	sendDocxFile(bot, chatID, conf.DOCX_ADMIN_PATH, status)
+		//case "user":
+		//	sendDocxFile(bot, chatID, conf.DOCX_USER_PATH, status)
+		//default:
+		//	msg := tgbotapi.NewMessage(
+		//		chatID,
+		//		"Internal service error: попробуйте снова позже 8",
+		//	)
+		//	bot.Send(msg)
+		//}
 		return
 	}
 
@@ -210,11 +218,11 @@ func HandleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 				log.Printf("Активныч горутин: %d\n", runtime.NumGoroutine())
 				return
 			case "password":
-				go handlePassword(bot, chatID, text)
+				go handlePassword(bot, chatID, text, messageID)
 				log.Printf("Активных горутин: %d\n", runtime.NumGoroutine())
 				return
 			case "re_password":
-				go handelerPasswordChange(bot, userID, chatID, text, status)
+				go handelerPasswordChange(bot, userID, chatID, text, status, messageID)
 				log.Printf("Активных горутин: %d\n", runtime.NumGoroutine())
 				return
 			case "password_check":

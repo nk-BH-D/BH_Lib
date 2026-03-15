@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	//"strings"
-	//env "github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -18,10 +16,10 @@ type Config struct {
 	POSTGRES_US_SMOC  int
 	POSTGRES_US_SMIC  int
 	ADMIN_PASSWORD    string
-	DOCX_ROOT_PATH    string
-	DOCX_ADMIN_PATH   string
-	DOCX_USER_PATH    string
-	ROOT_ID           int64
+	//DOCX_ROOT_PATH    string
+	//DOCX_ADMIN_PATH   string
+	//DOCX_USER_PATH    string
+	ROOT_ID int64
 }
 
 func Loader() (*Config, error) {
@@ -86,18 +84,18 @@ func Loader() (*Config, error) {
 		return nil, err
 	}
 
-	docx_root_puth := os.Getenv("DOCX_ROOT_PATH")
-	if docx_root_puth == "" {
-		return nil, fmt.Errorf("error whem getting docx root path")
-	}
-	docx_admin_path := os.Getenv("DOCX_ADMIN_PATH")
-	if docx_admin_path == "" {
-		return nil, fmt.Errorf("error whem getting docx admin path")
-	}
-	docx_user_path := os.Getenv("DOCX_USER_PATH")
-	if docx_user_path == "" {
-		return nil, fmt.Errorf("error whem getting docx user path")
-	}
+	//docx_root_puth := os.Getenv("DOCX_ROOT_PATH")
+	//if docx_root_puth == "" {
+	//	return nil, fmt.Errorf("error whem getting docx root path")
+	//}
+	//docx_admin_path := os.Getenv("DOCX_ADMIN_PATH")
+	//if docx_admin_path == "" {
+	//	return nil, fmt.Errorf("error whem getting docx admin path")
+	//}
+	//docx_user_path := os.Getenv("DOCX_USER_PATH")
+	//if docx_user_path == "" {
+	//	return nil, fmt.Errorf("error whem getting docx user path")
+	//}
 
 	return &Config{
 		HEALTH_CHECK_PORT: health_check_port,
@@ -109,8 +107,8 @@ func Loader() (*Config, error) {
 		POSTGRES_US_SMOC:  int_db_us_smoc,
 		POSTGRES_US_SMIC:  int_db_us_smic,
 		ROOT_ID:           int_root_id,
-		DOCX_ROOT_PATH:    docx_root_puth,
-		DOCX_ADMIN_PATH:   docx_admin_path,
-		DOCX_USER_PATH:    docx_user_path,
+		//DOCX_ROOT_PATH:    docx_root_puth,
+		//DOCX_ADMIN_PATH:   docx_admin_path,
+		//DOCX_USER_PATH:    docx_user_path,
 	}, nil
 }

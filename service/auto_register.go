@@ -6,12 +6,13 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"log"
 	"runtime"
 	"strings"
 	"time"
 	"unicode"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
@@ -55,7 +56,7 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 			switch status {
 			case "root":
 				status = ""
-				hashPassword := RootAndAdminHandler(bot, chatID, from)
+				hashPassword := RootAndAdminHandler(bot, chatID, from, false)
 				if hashPassword == "" {
 					log.Printf("sMM: root password setup failed")
 					return
@@ -98,7 +99,7 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 			case "root":
 				status = ""
 				if password_in_db == "" {
-					hashPassword := RootAndAdminHandler(bot, chatID, from)
+					hashPassword := RootAndAdminHandler(bot, chatID, from, false)
 					if hashPassword == "" {
 						log.Printf("sMM: root password setup failed")
 						return
@@ -124,7 +125,7 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 					}
 					ind, ok := getUserState(chatID)
 					if ok && ind["re_password"] == "true" {
-						hashPassword := RootAndAdminHandler(bot, chatID, from)
+						hashPassword := RootAndAdminHandler(bot, chatID, from, true)
 						if hashPassword == "" {
 							log.Printf("sMM: root password setup failed")
 							return
@@ -154,7 +155,7 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 			case "admin":
 				status = ""
 				if password_in_db == "" {
-					hashPassword := RootAndAdminHandler(bot, chatID, from)
+					hashPassword := RootAndAdminHandler(bot, chatID, from, true)
 					if hashPassword == "" {
 						log.Printf("sMM: root password setup failed")
 						return
@@ -180,7 +181,7 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 					}
 					ind, ok := getUserState(chatID)
 					if ok && ind["re_password"] == "true" {
-						hashPassword := RootAndAdminHandler(bot, chatID, from)
+						hashPassword := RootAndAdminHandler(bot, chatID, from, true)
 						if hashPassword == "" {
 							log.Printf("sMM: admin password setup failed")
 							return
@@ -234,7 +235,7 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 	}
 }
 
-func handlePassword(bot *tgbotapi.BotAPI, chatID int64, message string) {
+func handlePassword(bot *tgbotapi.BotAPI, chatID int64, message string, messageID int) {
 	log.Printf("hP: started handlePassword")
 	timer := time.NewTimer(1 * time.Minute)
 	tiker := time.NewTicker(250 * time.Millisecond)
@@ -251,7 +252,9 @@ func handlePassword(bot *tgbotapi.BotAPI, chatID int64, message string) {
 				log.Printf("hP: password is empty")
 				return
 			}
-			sendErrorMessage(bot, chatID, fmt.Sprintf("Ваш пароль содержит запрещённый символ: %s.\nВведите пароль корректно!", string(runa)), "", "")
+			sendErrorMessage(bot, chatID, fmt.Sprintf("Ваш пароль содержит запрещённый символ: '%s'.\nВведите пароль корректно!", string(runa)), "", "")
+			delUser := tgbotapi.NewDeleteMessage(chatID, messageID)
+			bot.Request(delUser)
 			log.Printf("hP: invalid character in password: %c", runa)
 			setUserState(chatID, map[string]string{"password": ""})
 			return
@@ -261,22 +264,42 @@ func handlePassword(bot *tgbotapi.BotAPI, chatID int64, message string) {
 		hashString := hex.EncodeToString(hash[:])
 
 		mdV2 := escapeMarkdownV2(message)
-		sendSuccessMessage(bot, chatID, fmt.Sprintf("Ваш пароль получен ||%s||\\.\n Пароль верный?", mdV2), "", "cp")
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Ваш пароль получен ||%s||\\.\n После нажатия любой кнопки сообщения будут удалены\\.\nПароль верный?", mdV2))
+		msg.ReplyMarkup = createCheckPasswordKeybord()
+		msg.ParseMode = "MarkdownV2"
+		sendMsg, err := bot.Send(msg)
+		if err != nil {
+			log.Printf("error whem sending message: %v", err)
+			sendErrorMessage(bot, chatID, "Internal service error: повторите попытку позже.", "", "")
+			return
+		}
 
 		for range tiker.C {
 			tik++
 			if tik >= 240 {
 				tik = 0
+				delUser := tgbotapi.NewDeleteMessage(chatID, messageID)
+				delBot := tgbotapi.NewDeleteMessage(chatID, sendMsg.MessageID)
+				bot.Request(delUser)
+				bot.Request(delBot)
 				return
 			}
 			ind, ok := getUserState(chatID)
 			if ok && ind["password_hash"] == "yes" {
+				delUser := tgbotapi.NewDeleteMessage(chatID, messageID)
+				delBot := tgbotapi.NewDeleteMessage(chatID, sendMsg.MessageID)
+				bot.Request(delUser)
+				bot.Request(delBot)
 				setUserState(chatID, map[string]string{"password_hash": hashString})
 				setReady(chatID, true)
 				log.Printf("hP: password successfully set")
 				return
 			}
 			if ok && ind["password_hash"] == "no" {
+				delUser := tgbotapi.NewDeleteMessage(chatID, messageID)
+				delBot := tgbotapi.NewDeleteMessage(chatID, sendMsg.MessageID)
+				bot.Request(delUser)
+				bot.Request(delBot)
 				sendErrorMessage(bot, chatID, "Введите верный пароль", "", "")
 				setReady(chatID, false)
 				log.Printf("hP: password rejected")
@@ -284,6 +307,10 @@ func handlePassword(bot *tgbotapi.BotAPI, chatID int64, message string) {
 				return
 			}
 			if !ok {
+				delUser := tgbotapi.NewDeleteMessage(chatID, messageID)
+				delBot := tgbotapi.NewDeleteMessage(chatID, sendMsg.MessageID)
+				bot.Request(delUser)
+				bot.Request(delBot)
 				deleteUserState(chatID)
 				sendErrorMessage(bot, chatID, "error when accessing map", "", "")
 				return
@@ -302,7 +329,7 @@ func handlePassword(bot *tgbotapi.BotAPI, chatID int64, message string) {
 	}
 }
 
-func RootAndAdminHandler(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) string {
+func RootAndAdminHandler(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User, change bool) string {
 	log.Printf("rAAH: started RootAndAdminHandler")
 	timer := time.NewTimer(1 * time.Minute)
 	tiker := time.NewTicker(250 * time.Millisecond)
@@ -314,13 +341,23 @@ func RootAndAdminHandler(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User
 		tik := 0
 		defer close(hashPasChan)
 		setUserState(chatID, map[string]string{"password": ""})
-		sendSuccessMessage(bot, chatID,
-			fmt.Sprintf(
-				"Добро пожаловать в команду администраторов проекта %s, %s.\n Придумайте и введите сложный пароль. Он может содержать только.\nЛатиницу, цифры и символы '_', '#', '@', '-'",
-				bot.Self.UserName,
-				strings.TrimSpace(from.LastName+" "+from.FirstName),
-			), "", "",
-		)
+		if !change {
+			sendSuccessMessage(bot, chatID,
+				fmt.Sprintf(
+					"Добро пожаловать в команду администраторов проекта %s, %s.\nВведите пароль, обязательно сохраните его вне Telegram.\nОн может содержать только - латиницу, цифры и символы '_', '#', '@', '-'",
+					bot.Self.UserName,
+					strings.TrimSpace(from.LastName+" "+from.FirstName),
+				), "", "",
+			)
+		} else {
+			sendSuccessMessage(bot, chatID,
+				fmt.Sprintf(
+					"%s измените свой пароль на новый.\nВведите новый пароль, обязательно сохраните его вне Telegram.\nОн может содержать только - латиницу, цифры и символы '_', '#', '@', '-'",
+					strings.TrimSpace(from.LastName+" "+from.FirstName),
+				), "", "",
+			)
+		}
+
 		for range tiker.C {
 			tik++
 			if tik >= 240 {
@@ -350,7 +387,7 @@ func RootAndAdminHandler(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User
 	}
 }
 
-func handelerPasswordChange(bot *tgbotapi.BotAPI, userID, chatID int64, old_password, status string) {
+func handelerPasswordChange(bot *tgbotapi.BotAPI, userID, chatID int64, old_password, status string, messageID int) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, _, hash_password, err := pg_us_db.GetUserStatus(ctx, userID)
@@ -364,9 +401,13 @@ func handelerPasswordChange(bot *tgbotapi.BotAPI, userID, chatID int64, old_pass
 	hash := sha256.Sum256([]byte(old_password))
 	if hash_password == hex.EncodeToString(hash[:]) {
 		setUserState(chatID, map[string]string{"re_password": "true"})
+		delUser := tgbotapi.NewDeleteMessage(chatID, messageID)
+		bot.Request(delUser)
 		return
 	} else {
 		setUserState(chatID, map[string]string{"re_password": "false"})
+		delUser := tgbotapi.NewDeleteMessage(chatID, messageID)
+		bot.Request(delUser)
 		return
 	}
 }
