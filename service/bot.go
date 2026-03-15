@@ -227,6 +227,8 @@ func HandleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 				return
 			case "password_check":
 				setUserState(chatID, map[string]string{"password_check": text})
+				delUser := tgbotapi.NewDeleteMessage(chatID, messageID)
+				bot.Request(delUser)
 				setReady(chatID, true)
 			case "del_code":
 				go handlerDelCode(bot, chatID, userID, status, message.Text, message.From.UserName)
