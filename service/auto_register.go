@@ -155,7 +155,7 @@ func showMainMenu(bot *tgbotapi.BotAPI, chatID int64, from *tgbotapi.User) {
 			case "admin":
 				status = ""
 				if password_in_db == "" {
-					hashPassword := RootAndAdminHandler(bot, chatID, from, true)
+					hashPassword := RootAndAdminHandler(bot, chatID, from, false)
 					if hashPassword == "" {
 						log.Printf("sMM: root password setup failed")
 						return
