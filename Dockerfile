@@ -14,6 +14,4 @@ WORKDIR /app
 
 COPY --from=builder /bh_lib-app/bh_lib-bin /app/bh_lib-bin
 
-COPY instruction /app/instruction
-
 ENTRYPOINT ["/app/bh_lib-bin"]
