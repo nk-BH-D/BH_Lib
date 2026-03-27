@@ -43,7 +43,7 @@ func createRootCommandsKeyboard() tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData("Удалить админа", "del_admin"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Получить список моих запросов", "get_my_request"),
+			tgbotapi.NewInlineKeyboardButtonData("Получить список существующих решений", "get_my_request"),
 		),
 	)
 }
@@ -59,7 +59,7 @@ func createAdminCommandsKeyboard() tgbotapi.InlineKeyboardMarkup {
 			tgbotapi.NewInlineKeyboardButtonData("Обновить решение", "up_code"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Получить список моих запросов", "get_my_request"),
+			tgbotapi.NewInlineKeyboardButtonData("Получить список существующих решений", "get_my_request"),
 		),
 	)
 }
