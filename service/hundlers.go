@@ -16,11 +16,11 @@ import (
 )
 
 func handlerCreateCod(bot *tgbotapi.BotAPI, chatID, userID int64, status, message, login string) {
-	log.Println("запустились")
+	//log.Println("запустились")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	login_in_db, status_in_db, _, err := pg_us_db.GetUserStatus(ctx, userID)
-	log.Printf("статус: %s %s; err: %v", status_in_db, status, err)
+	//log.Printf("статус: %s %s; err: %v", status_in_db, status, err)
 	if err != nil {
 		sendErrorMessage(bot, chatID, "Internal service error: попробуйте снова позже 10", status, "")
 		log.Printf("hCC: error whem GetUserStatus: %v", err)
@@ -42,7 +42,7 @@ func handlerCreateCod(bot *tgbotapi.BotAPI, chatID, userID int64, status, messag
 		parts := strings.Split(message, ";;")
 		log.Printf("len: %d", len(parts))
 
-		if len(parts) < 4 || len(parts)%2 != 0 {
+		if len(parts) < 4 {
 			sendErrorMessage(bot, chatID, "Данные введены не корректно", status, "")
 			log.Println("hCC: len parts != 4")
 			return
@@ -53,18 +53,19 @@ func handlerCreateCod(bot *tgbotapi.BotAPI, chatID, userID int64, status, messag
 		for i := 1; i+2 <= len(parts); i += 3 {
 			task_name := strings.TrimSpace(parts[i])
 			cound := strings.TrimSpace(parts[i+1])
-			log.Println(cound)
-			log.Println(parts[i+2])
+			decision := parts[i+2]
+			//log.Println(cound)
+			//log.Println(parts[i+2])
 
 			ctxIN, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			err := pg_lib_db.InsertData(ctxIN, userID, course_name, task_name, cound, parts[i+2])
+			err := pg_lib_db.InsertData(ctxIN, userID, course_name, task_name, cound, decision)
 			log.Println(err)
 			if err != nil {
 				if pgErr, ok := err.(*pgconn.PgError); ok {
 					if pgErr.Code == "23505" {
 						sendErrorMessage(bot, chatID, "Решение этой задачи уже есть в базе", status, "")
-						log.Printf("пользователь: %s попытался добавить решение задачи: %s/%s, которое уже есть в базе", login, parts[1], parts[2])
+						log.Printf("пользователь: %s попытался добавить решение задачи: %s/%s, которое уже есть в базе", login, parts[0], parts[i])
 						return
 					}
 				}

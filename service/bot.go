@@ -290,41 +290,63 @@ func sendErrorMessage(bot *tgbotapi.BotAPI, chatID int64, message string, status
 	}
 }
 func sendSuccessMessage(bot *tgbotapi.BotAPI, chatID int64, message string, status, mod string) {
-	msg := tgbotapi.NewMessage(chatID, message)
-	switch status {
-	case "root":
-		msg.ReplyMarkup = createRootMenuKeyboard()
-	case "admin":
-		msg.ReplyMarkup = createAdminMenuKeyboard()
-	case "user":
-		msg.ReplyMarkup = createUserMenuKeyboard()
-	default:
-		switch mod {
-		case "rk":
-			msg.ReplyMarkup = createRootCommandsKeyboard()
-		case "ak":
-			msg.ReplyMarkup = createAdminCommandsKeyboard()
-		case "uk":
-			msg.ReplyMarkup = createUserCommandsKeyboard()
-		case "":
-			msg.ReplyMarkup = nil
-		case "cp":
-			msg.ReplyMarkup = createCheckPasswordKeybord()
-			msg.ParseMode = "MarkdownV2"
+	message_list := []string{}
+	if len(message) > 4096 {
+		runes := []rune(message)
+		for i := 0; i < len(runes); i += 4096 {
+			end := i + 4096
+
+			if end > len(runes) {
+				end = len(runes) // хвост
+			}
+
+			message_list = append(message_list, string(runes[i:end]))
+		}
+		assistedSendSuccessMessage(bot, chatID, message_list, status, mod)
+	} else {
+		message_list = append(message_list, message)
+		assistedSendSuccessMessage(bot, chatID, message_list, status, mod)
+	}
+}
+func assistedSendSuccessMessage(bot *tgbotapi.BotAPI, chatID int64, message_list []string, status, mod string) {
+	for _, message := range message_list {
+		msg := tgbotapi.NewMessage(chatID, message)
+		switch status {
+		case "root":
+			msg.ReplyMarkup = createRootMenuKeyboard()
+		case "admin":
+			msg.ReplyMarkup = createAdminMenuKeyboard()
+		case "user":
+			msg.ReplyMarkup = createUserMenuKeyboard()
 		default:
-			sendErrorMessage(bot, chatID, "Internal service error: попробуйте снова позже 13", "", "")
-			log.Printf("ошибка при определении status или mod")
+			switch mod {
+			case "rk":
+				msg.ReplyMarkup = createRootCommandsKeyboard()
+			case "ak":
+				msg.ReplyMarkup = createAdminCommandsKeyboard()
+			case "uk":
+				msg.ReplyMarkup = createUserCommandsKeyboard()
+			case "":
+				msg.ReplyMarkup = nil
+			case "cp":
+				msg.ReplyMarkup = createCheckPasswordKeybord()
+				msg.ParseMode = "MarkdownV2"
+			default:
+				sendErrorMessage(bot, chatID, "Internal service error: попробуйте снова позже 13", "", "")
+				log.Printf("ошибка при определении status или mod")
+				return
+			}
+
+		}
+		_, sendErr := bot.Send(msg)
+		if sendErr != nil {
+			log.Printf("error sending message: %s, %v", message, sendErr)
+			sendErrorMessage(bot, chatID, fmt.Sprintf("произошла ошибка при отправке сообщения: %v", sendErr), status, "")
+			log.Printf("ошибка при отправкее сообщения: %v", sendErr)
 			return
 		}
+	}
 
-	}
-	_, sendErr := bot.Send(msg)
-	if sendErr != nil {
-		log.Printf("error sending message: %s, %v", message, sendErr)
-		sendErrorMessage(bot, chatID, fmt.Sprintf("произошла ошибка при отправке сообщения: %v", sendErr), status, "")
-		log.Printf("ошибка при отправкее сообщения: %v", sendErr)
-		return
-	}
 }
 
 // frontend
