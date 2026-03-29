@@ -25,9 +25,11 @@ var (
 	userStates    = make(map[int64]map[string]string)
 	sessionStatus = make(map[int64]sessionState)
 	userReady     = make(map[int64]bool) // Карта для хранения состояния готовности
+	decisionUsers = make(map[int64]chan string)
 	uSM           sync.RWMutex
 	sSM           sync.RWMutex
 	uRM           sync.RWMutex
+	dM            sync.RWMutex
 	conf          *config.Config
 	pg_lib_db     *lib.PostgresLib
 	pg_us_db      *us.PostgresUs
@@ -101,6 +103,40 @@ func isReady(chatID int64) bool {
 		return false
 	}
 	return ready
+}
+
+// func for syncing decision map
+func setDecisionUsers(chatID int64, decision string) {
+	dM.Lock()
+	defer dM.Unlock()
+
+	if _, ok := decisionUsers[chatID]; !ok {
+		decisionUsers[chatID] = make(chan string, 1) // буфер 1
+	}
+
+	// если канал уже занят, перезаписываем
+	select {
+	case decisionUsers[chatID] <- decision:
+	default:
+		// канал переполнен, переписываем старое сообщение
+		<-decisionUsers[chatID]
+		decisionUsers[chatID] <- decision
+	}
+}
+func getDecisionUsers(chatID int64) string {
+	dM.RLock()
+	defer dM.RUnlock()
+
+	if ch, ok := decisionUsers[chatID]; ok {
+		select {
+		case msg := <-ch:
+			return msg
+		default:
+			return "" // нет сообщения
+		}
+	}
+
+	return "" // канал не найден
 }
 
 // sendDocxFile sending file .docx to Telegram chat.
@@ -338,6 +374,11 @@ func assistedSendSuccessMessage(bot *tgbotapi.BotAPI, chatID int64, message_list
 			}
 
 		}
+
+		if mod == "md" {
+			msg.ParseMode = "MarkdownV2"
+		}
+
 		_, sendErr := bot.Send(msg)
 		if sendErr != nil {
 			log.Printf("error sending message: %s, %v", message, sendErr)
@@ -444,6 +485,10 @@ func HandleCallback(bot *tgbotapi.BotAPI, callbackQuery *tgbotapi.CallbackQuery)
 			sendSuccessMessage(bot, chatID, "Введите данные как указано в документации", status, "d")
 			return
 		}
+		return
+	case "decision":
+		result := getDecisionUsers(chatID)
+		sendSuccessMessage(bot, chatID, result, status, "md")
 		return
 	default:
 		sendErrorMessage(bot, chatID, "Неизвестная команда", status, "")

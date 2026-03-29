@@ -169,7 +169,10 @@ func handlerGetCod(bot *tgbotapi.BotAPI, chatID, userID int64, status, message, 
 		}
 	}
 
-	var result strings.Builder
+	var (
+		result strings.Builder
+		dec    bool = false
+	)
 
 	if cond == "" {
 		result.WriteString(escapeMarkdownV2(fmt.Sprintf("Задача: %s\n", name)))
@@ -177,31 +180,49 @@ func handlerGetCod(bot *tgbotapi.BotAPI, chatID, userID int64, status, message, 
 		result.WriteString(escapeMarkdownV2(data) + "\n")
 		result.WriteString("```" + "\n")
 	} else {
+		//log.Println("условие есть")
 		result.WriteString(escapeMarkdownV2(fmt.Sprintf("Задача: %s\n", name)))
 		result.WriteString("\n")
 		result.WriteString("Условие\n" + escapeMarkdownV2(cond) + "\n")
-		result.WriteString("\n")
-		result.WriteString("```" + "\n")
-		result.WriteString(escapeMarkdownV2(data) + "\n")
-		result.WriteString("```" + "\n")
+		var decision strings.Builder
+		decision.WriteString("```" + "\n")
+		decision.WriteString(escapeMarkdownV2(data) + "\n")
+		decision.WriteString("```" + "\n")
+		setDecisionUsers(chatID, decision.String())
+		dec = true
+		//log.Printf("result: %s", result.String())
+		//log.Printf("decision: %s", decision.String())
+		//log.Printf("в мапе: %s", getDecisionUsers(chatID))
 	}
 
 	msg := tgbotapi.NewMessage(chatID, result.String())
 
 	log.Printf("hGC: status: %s", status)
+
+	// Создаём базовую клавиатуру в зависимости от статуса пользователя
+	var baseKeyboard tgbotapi.InlineKeyboardMarkup
 	switch status {
 	case "root":
-		msg.ReplyMarkup = createRootMenuKeyboard()
+		baseKeyboard = createRootMenuKeyboard()
 	case "admin":
-		msg.ReplyMarkup = createAdminMenuKeyboard()
+		baseKeyboard = createAdminMenuKeyboard()
 	case "user":
-		msg.ReplyMarkup = createUserMenuKeyboard()
+		baseKeyboard = createUserMenuKeyboard()
 	default:
 		sendErrorMessage(bot, chatID, "Internal service error: попробуйте снова позже 25", "", "")
 		log.Printf("hGC: error whem detect user status: %s", status)
 		return
 	}
+
+	// если dec == true, добавляем кнопку "Получить решение"
+	if dec {
+		decisionButton := tgbotapi.NewInlineKeyboardButtonData("Получить решение", "decision")
+		baseKeyboard.InlineKeyboard = append(baseKeyboard.InlineKeyboard, tgbotapi.NewInlineKeyboardRow(decisionButton))
+	}
+
+	msg.ReplyMarkup = baseKeyboard
 	msg.ParseMode = "MarkdownV2"
+
 	_, errSend := bot.Send(msg)
 	if errSend != nil {
 		sendErrorMessage(bot, chatID, "error whem sending message", status, "")
