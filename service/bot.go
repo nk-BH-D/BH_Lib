@@ -16,7 +16,7 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"github.com/nk-BH-D/BH_Lib/internal/config"
+	config "github.com/nk-BH-D/BH_Lib/internal/config"
 	lib "github.com/nk-BH-D/BH_Lib/internal/method_lib_db"
 	us "github.com/nk-BH-D/BH_Lib/internal/method_users_db"
 )
