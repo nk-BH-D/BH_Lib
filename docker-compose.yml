@@ -62,9 +62,6 @@ services:
       DOCX_ADMIN_PATH: ${DOCX_ADMIN_PATH}
       DOCX_USER_PATH: ${DOCX_USER_PATH}
 
-    ports:
-      - "${HEALTH_CHECK_PORT}:${HEALTH_CHECK_PORT}"
-
     depends_on:
       users_db:
         condition: service_healthy

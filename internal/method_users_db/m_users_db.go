@@ -258,6 +258,7 @@ func NewSesPostgres(db_ses_url string, smoc, smic int) (*PostgresSes, error) {
 func (ps *PostgresSes) CloseSes() error {
 	return ps.DB_ses.Close()
 }
+
 func (ps *PostgresSes) ensureSchemaSes() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

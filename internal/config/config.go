@@ -15,7 +15,6 @@ type Config struct {
 	POSTGRES_LIB_SMIC int
 	POSTGRES_US_SMOC  int
 	POSTGRES_US_SMIC  int
-	ADMIN_PASSWORD    string
 	//DOCX_ROOT_PATH    string
 	//DOCX_ADMIN_PATH   string
 	//DOCX_USER_PATH    string
