@@ -177,16 +177,19 @@ func handlerGetCod(bot *tgbotapi.BotAPI, chatID, userID int64, status, message, 
 	if cond == "" {
 		result.WriteString(escapeMarkdownV2(fmt.Sprintf("Задача: %s\n", name)))
 		result.WriteString("```" + "\n")
-		result.WriteString(escapeMarkdownV2(data) + "\n")
+		result.WriteString(escapeMarkdownV2(data))
+		result.WriteString("\n")
 		result.WriteString("```" + "\n")
 	} else {
 		//log.Println("условие есть")
 		result.WriteString(escapeMarkdownV2(fmt.Sprintf("Задача: %s\n", name)))
 		result.WriteString("\n")
-		result.WriteString("Условие\n" + escapeMarkdownV2(cond) + "\n")
+		result.WriteString("Условие\n")
+		result.WriteString(escapeMarkdownV2(data))
+		result.WriteString("\n")
 		var decision strings.Builder
 		decision.WriteString("```" + "\n")
-		decision.WriteString(escapeMarkdownV2(data) + "\n")
+		result.WriteString(escapeMarkdownV2(data))
 		decision.WriteString("```" + "\n")
 		setDecisionUsers(chatID, decision.String())
 		dec = true
@@ -262,12 +265,8 @@ func handlerDelCode(bot *tgbotapi.BotAPI, chatID, userID int64, status, message,
 		}
 		valid := false
 		frqn := strings.ReplaceAll(rqn, "\r", "")
-		chek_parts := strings.Split(frqn, "\n")
-		for _, str := range chek_parts {
-			if "up"+format == str || "c"+format == str {
-				valid = true
-				break
-			}
+		if strings.Contains(frqn, "up"+format) || strings.Contains(frqn, "c"+format) {
+			valid = true
 		}
 		if !valid {
 			sendErrorMessage(
@@ -289,14 +288,19 @@ func handlerDelCode(bot *tgbotapi.BotAPI, chatID, userID int64, status, message,
 			log.Printf("error whem del datat: %v", errD)
 			return
 		}
-		ctxDR, cancelDR := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancelDR()
-		errDR := pg_us_db.DeleteReqData(ctxDR, format, userID)
-		log.Printf("hDC: %s", format)
-		if errDR != nil {
-			sendErrorMessage(bot, chatID, "Ошибка при удалении данных из списка запросов", status, "")
-			log.Printf("error whem del data: %v", errDR)
-			return
+		ctxDR0, cancelDR0 := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelDR0()
+		errDR0 := pg_us_db.DeleteReqData(ctxDR0, "c"+format, userID)
+		if errDR0 != nil {
+			ctxDR, cancelDR := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancelDR()
+			errDR := pg_us_db.DeleteReqData(ctxDR, "up"+format, userID)
+			log.Printf("hDC: %s", format)
+			if errDR != nil {
+				sendErrorMessage(bot, chatID, "Ошибка при удалении данных из списка запросов", status, "")
+				log.Printf("error whem del data: %v", errDR)
+				return
+			}
 		}
 		sendSuccessMessage(bot, chatID, "Решение успешно удалено", status, "")
 		return
@@ -339,12 +343,8 @@ func handlerUpCode(bot *tgbotapi.BotAPI, chatID, userID int64, status, message, 
 		}
 		valid := false
 		frqn := strings.ReplaceAll(rqn, "\r", "")
-		chek_parts := strings.Split(frqn, "\n")
-		for _, str := range chek_parts {
-			if "up"+"/"+format1+"/"+format2 == str || "c"+"/"+format1+"/"+format2 == str {
-				valid = true
-				break
-			}
+		if strings.Contains(frqn, "up"+format1+"/"+format2) || strings.Contains(frqn, "c"+format1+"/"+format2) {
+			valid = true
 		}
 		if !valid {
 			sendErrorMessage(
@@ -362,7 +362,7 @@ func handlerUpCode(bot *tgbotapi.BotAPI, chatID, userID int64, status, message, 
 		defer cancelD()
 		errU := pg_lib_db.UpdateData(ctxU, format1, format2, cond, parts[3])
 		if errU != nil {
-			sendErrorMessage(bot, chatID, "Ошибка при удалении данных", status, "")
+			sendErrorMessage(bot, chatID, "Ошибка при обновлении данных", status, "")
 			log.Printf("error whem del datat: %v", errU)
 			return
 		}
@@ -414,7 +414,8 @@ func handlerGetRequest(bot *tgbotapi.BotAPI, chatID, userID int64, status string
 
 		for _, part := range parts {
 			if part != "" {
-				result.WriteString(part + "\n")
+				result.WriteString(part)
+				result.WriteString("\n")
 			}
 		}
 
