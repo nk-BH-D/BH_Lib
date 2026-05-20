@@ -50,12 +50,13 @@ func handlerCreateCod(bot *tgbotapi.BotAPI, chatID, userID int64, status, messag
 
 		course_name := strings.TrimSpace(parts[0])
 
-		for i := 1; i+2 <= len(parts); i += 3 {
+		for i := 1; i+2 < len(parts); i += 3 {
 			task_name := strings.TrimSpace(parts[i])
 			cound := strings.TrimSpace(parts[i+1])
 			decision := parts[i+2]
-			//log.Println(cound)
-			//log.Println(parts[i+2])
+			log.Println(task_name)
+			log.Println(cound)
+			log.Println(decision)
 
 			ctxIN, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
@@ -86,7 +87,7 @@ func handlerCreateCod(bot *tgbotapi.BotAPI, chatID, userID int64, status, messag
 			if !strings.Contains(rq, "c"+"/"+course_name+"/"+task_name) && !strings.Contains(rq, "/"+course_name+"/"+task_name) {
 				ctxUD, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel2()
-				errUD := pg_us_db.UpdateUserData(ctxUD, userID, login, "c"+"/"+course_name+"/"+task_name, 1)
+				errUD := pg_us_db.UpdateUserData(ctxUD, userID, login, "c/"+course_name+"/"+task_name, 1)
 				if errUD != nil {
 					sendErrorMessage(bot, chatID, "Internal service error: попробуйте снова позже 17", status, "")
 					log.Printf("hCC: error whem UpdateUserData: %v", errUD)
@@ -137,6 +138,9 @@ func handlerGetCod(bot *tgbotapi.BotAPI, chatID, userID int64, status, message, 
 	}
 
 	name, cond, data, err := pg_lib_db.GetData(ctx, parts[0], parts[1])
+	log.Println(name)
+	log.Println(cond)
+	log.Println(data)
 	if err != nil && err != sql.ErrNoRows {
 		sendErrorMessage(bot, chatID, "Internal service error, попробуйте позже 17", status, "")
 		log.Printf("hGC: error whem GetData: %v", err)
@@ -185,11 +189,11 @@ func handlerGetCod(bot *tgbotapi.BotAPI, chatID, userID int64, status, message, 
 		result.WriteString(escapeMarkdownV2(fmt.Sprintf("Задача: %s\n", name)))
 		result.WriteString("\n")
 		result.WriteString("Условие\n")
-		result.WriteString(escapeMarkdownV2(data))
+		result.WriteString(escapeMarkdownV2(cond))
 		result.WriteString("\n")
 		var decision strings.Builder
 		decision.WriteString("```" + "\n")
-		result.WriteString(escapeMarkdownV2(data))
+		decision.WriteString(escapeMarkdownV2(data))
 		decision.WriteString("```" + "\n")
 		setDecisionUsers(chatID, decision.String())
 		dec = true
@@ -341,9 +345,10 @@ func handlerUpCode(bot *tgbotapi.BotAPI, chatID, userID int64, status, message, 
 			log.Printf("hDC error whem GetUserRequestName: %v", err)
 			return
 		}
+		log.Printf("hDC: rqn: %s", rqn)
 		valid := false
 		frqn := strings.ReplaceAll(rqn, "\r", "")
-		if strings.Contains(frqn, "up"+format1+"/"+format2) || strings.Contains(frqn, "c"+format1+"/"+format2) {
+		if strings.Contains(frqn, "up/"+format1+"/"+format2) || strings.Contains(frqn, "c/"+format1+"/"+format2) {
 			valid = true
 		}
 		if !valid {
@@ -360,6 +365,7 @@ func handlerUpCode(bot *tgbotapi.BotAPI, chatID, userID int64, status, message, 
 
 		ctxU, cancelD := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancelD()
+		log.Printf("%s\n%s\n%s\n|%s|", format1, format2, cond, parts[3])
 		errU := pg_lib_db.UpdateData(ctxU, format1, format2, cond, parts[3])
 		if errU != nil {
 			sendErrorMessage(bot, chatID, "Ошибка при обновлении данных", status, "")
