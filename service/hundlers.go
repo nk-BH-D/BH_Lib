@@ -286,26 +286,22 @@ func handlerDelCode(bot *tgbotapi.BotAPI, chatID, userID int64, status, message,
 
 		ctxD, cancelD := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancelD()
-		errD := pg_lib_db.DeleteData(ctxD, parts[2], userID)
+		errD := pg_lib_db.DeleteData(ctxD, parts[3], userID)
 		if errD != nil {
 			sendErrorMessage(bot, chatID, "Ошибка при удалении данных", status, "")
 			log.Printf("error whem del datat: %v", errD)
 			return
 		}
-		ctxDR0, cancelDR0 := context.WithTimeout(context.Background(), 5*time.Second)
+		log.Printf("hDC: %s", format)
+		ctxDR, cancelDR0 := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancelDR0()
-		errDR0 := pg_us_db.DeleteReqData(ctxDR0, "c"+format, userID)
-		if errDR0 != nil {
-			ctxDR, cancelDR := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancelDR()
-			errDR := pg_us_db.DeleteReqData(ctxDR, "up"+format, userID)
-			log.Printf("hDC: %s", format)
-			if errDR != nil {
-				sendErrorMessage(bot, chatID, "Ошибка при удалении данных из списка запросов", status, "")
-				log.Printf("error whem del data: %v", errDR)
-				return
-			}
+		errDR := pg_us_db.DeleteReqData(ctxDR, format, userID)
+		if errDR != nil {
+			sendErrorMessage(bot, chatID, "Ошибка при удалении данных из списка запросов", status, "")
+			log.Printf("error whem del data: %v", errDR)
+			return
 		}
+
 		sendSuccessMessage(bot, chatID, "Решение успешно удалено", status, "")
 		return
 	} else {
